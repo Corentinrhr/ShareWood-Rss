@@ -1,15 +1,20 @@
-FROM python:3.9-slim-buster
+FROM python:3.13-slim
 
-WORKDIR /rss
+WORKDIR /app
 
 ENV TZ=Europe/Paris
 
-COPY requierements.txt requierements.txt
-RUN pip install --upgrade pip && pip install -r requierements.txt
+# Installation des dépendances
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
+# Copie du reste des fichiers
 COPY . .
 
-EXPOSE 4000
+# Port d'écoute de l'application
+EXPOSE 14000
 
+# Utilisation de gthread pour la stabilité avec requests
 ENTRYPOINT [ "gunicorn" ]
-CMD [ "__init__:app", "-b", "0.0.0.0:4000", "--worker-class=gevent", "--worker-connections=100", "--workers=1", "--threads=5" ]
+CMD [ "rss:app", "-b", "0.0.0.0:14000", "--worker-class=gthread", "--workers=2", "--threads=4", "--timeout=60" ]

@@ -1,8 +1,0 @@
-Flask==2.0.0
-gunicorn==20.1.0
-humanize==3.5.0
-lxml==4.6.3
-PyYAML==5.4.1
-requests==2.25.1
-gevent
-retry

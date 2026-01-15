@@ -4,133 +4,144 @@
 # http://localhost:5000/rss/<PASSKEY>/last-torrents?category=1&limit=10
 # http://localhost:5000/rss/<PASSKEY>/last-torrents?subcategory=6&limit=10
 # http://localhost:5000/rss/<PASSKEY>/search?name=watchmen&subcategory=9&limit=10
-
+#!/usr/bin/env python3
 
 from lxml import etree as et
 from flask import Flask, request, abort, Response
-from retry import retry
-# from markupsafe import escape
 import requests
-import time
 import yaml
 import humanize
+import email.utils
+import time
 
-with open('config.yml', 'r') as ymlfile:
-    cfgTitle = yaml.load(ymlfile, Loader=yaml.FullLoader)
-
-titleDict = cfgTitle['title']
+try:
+    with open('config.yml', 'r') as ymlfile:
+        cfgTitle = yaml.load(ymlfile, Loader=yaml.FullLoader)
+        titleDict = cfgTitle.get('title', {})
+except FileNotFoundError:
+    print("Attention: config.yml non trouvé.")
+    titleDict = {}
 
 app = Flask(__name__)
 
-@retry((ValueError, TypeError), delay=1, jitter=2, tries=4)
-def get_Json_Api(arguments, url):
-    response = requests.get(url, params=arguments)
-    if not response.ok:
-        raise ValueError
-    apiData = response.json()
+def get_sharewood_data(url, params):
+    """Récupère les données API avec un timeout pour éviter de bloquer le worker."""
     try:
-        _ = iter(apiData)
-    except TypeError as te:
-        print(str(url) + "::::::::::" + str(te))
-        raise TypeError
-    return apiData
-
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"Erreur lors de l'appel Sharewood: {e}")
+        return []
 
 @app.route('/')
 def how_to():
-    return '<strong>Exemples :</strong><br>http://localhost:4000/rss/PASSKEY/last-torrents?category=1&limit=10<br>http://localhost:4000/rss/PASSKEY/last-torrents?subcategory=6&limit=10<br>http://localhost:4000/rss/PASSKEY/search?name=watchmen&subcategory=9&limit=10'
+    return (
+        '<strong>Exemples :</strong><br>'
+        'http://localhost:14000/rss/VOTRE_PASSKEY/last-torrents?category=1&limit=10<br>'
+        'http://localhost:14000/rss/VOTRE_PASSKEY/last-torrents?subcategory=6&limit=10<br>'
+        'http://localhost:14000/rss/VOTRE_PASSKEY/search?name=watchmen&subcategory=9&limit=10'
+    )
 
 @app.route('/rss/<string:passkey>/<string:apiAction>', methods=['GET'])
-def return_Rss_File(passkey, apiAction):
+def return_rss_file(passkey, apiAction):
+    
+    # Validation basique de la passkey
+    if not passkey or len(passkey) != 32:
+        return abort(404, description="Passkey invalide ou manquante")
 
-    # passkey = os.environ.get("SHAREWOOD_PASSKEY")
-    if passkey == None or len(passkey) != 32:
-        return abort(404)
-    arguments = {}
+    # Récupération des arguments
+    category = request.args.get("category", type=int)
+    subcategory = request.args.get("subcategory", type=int)
+    limit = request.args.get("limit", 50, type=int)
+    name = request.args.get("name", type=str)
 
-    try:
-        category = request.args.get("category", "", type=int)
-        subcategory = request.args.get("subcategory", "", type=int)
-        limit = request.args.get("limit", "", type=int)
-        name = request.args.get("name", "", type=str)
-    except:
-        print(f"bad request args")
-        return abort(404)
+    api_params = {}
+    current_cat_id = '0' # Titre par défaut
 
-    if category:
-        category = str(category) if category <= 7 else False
-        if category:
-            arguments['category'] = category
-        else:
-            return abort(404)
-    elif subcategory:
-        subcategory = str(
-            subcategory) if subcategory > 8 and subcategory <= 36 else False
-        if subcategory:
-            arguments['subcategory'] = subcategory
-        else:
-            return abort(404)
-    if limit:
-        limit = str(limit) if limit <= 25 else str(25)
-        arguments['limit'] = limit
+    # Logique des catégories
+    if category and 1 <= category <= 7:
+        api_params['category'] = category
+        current_cat_id = str(category)
+    
+    if subcategory and 8 < subcategory <= 36:
+        api_params['subcategory'] = subcategory
+        current_cat_id = str(subcategory)
+
+    # Limite de sécurité
+    api_params['limit'] = min(limit, 50)
+    
     if name:
-        arguments['name'] = str(name)
+        api_params['name'] = name
 
+    # Construction de l'URL cible
+    base_url = f"https://www.sharewood.tv/api/{passkey}"
     if apiAction == 'last-torrents':
-        url = f"https://www.sharewood.tv/api/{passkey}/last-torrents"
-    elif apiAction == "search":
-        if name:
-            url = f"https://www.sharewood.tv/api/{passkey}/search"
+        url = f"{base_url}/last-torrents"
+    elif apiAction == "search" and name:
+        url = f"{base_url}/search"
     else:
-        return abort(404)
+        return abort(404, description="Action inconnue")
 
-    if category:
-        keyTitleDict = category
-    elif subcategory:
-        keyTitleDict = subcategory
-    else:
-        keyTitleDict = 0
+    # Appel API
+    torrents = get_sharewood_data(url, api_params)
 
+    # --- Génération du XML RSS ---
     rss = et.Element("rss", version="2.0")
     channel = et.SubElement(rss, "channel")
-    title = et.SubElement(channel, "title")
-    if not name:
-        title.text = "ShareWood RSS : " + titleDict.get(str(keyTitleDict))
+    
+    # Titre du flux
+    title_node = et.SubElement(channel, "title")
+    if name:
+        title_node.text = f"ShareWood Search : {name}"
     else:
-        title.text = f"ShareWood Search : {str(name)}"
-    description = et.SubElement(channel, "description")
-    description.text = "Flux RSS Sharewood"
-    lastBuildDate = et.SubElement(channel, "lastBuildDate")
-    named_tuple = time.localtime()
-    time_string = time.strftime("%Y-%m-%d,%H:%M:%S", named_tuple)
-    lastBuildDate.text = time_string
-    link = et.SubElement(channel, "link")
-    link.text = "https://sharewood.tv"
-    apiData = get_Json_Api(arguments, url)
-    for torrent in apiData:
-        channel.append(et.Comment("News Torrents Item"))
+        cat_name = titleDict.get(current_cat_id, "Inconnu")
+        title_node.text = f"ShareWood RSS : {cat_name}"
+
+    et.SubElement(channel, "description").text = "Flux RSS Sharewood"
+    et.SubElement(channel, "link").text = "https://sharewood.tv"
+    
+    # Date au format standard RFC 822 (Important pour les clients torrent)
+    et.SubElement(channel, "lastBuildDate").text = email.utils.formatdate(usegmt=True)
+    et.SubElement(channel, "ttl").text = "60"
+
+    for torrent in torrents:
         item = et.SubElement(channel, "item")
-        title = et.SubElement(item, "title")
-        title.text = str(torrent.get('name'))
-        sizeTorrent = torrent.get('size') if type(torrent.get(
-            'size')) is str else humanize.naturalsize(torrent.get('size'), binary=True)
-        description = et.SubElement(item, "description")
-        description.text = f"Nom de l'upload: <strong><a href='https://sharewood.tv/torrents/{str(torrent.get('slug'))}.{str(torrent.get('id'))}'>{torrent.get('name')}</a></strong> <br/> Taille de l'upload: {sizeTorrent}<br/> Status: {str(torrent.get('seeders'))} seeders et {str(torrent.get('leechers'))} leechers <br/> Ajouté le: {torrent.get('created_at')}"
-        description.text = et.CDATA(description.text)
-        link = et.SubElement(item, "link")
-        link.text = f"https://sharewood.tv/torrents/{str(torrent.get('slug'))}.{str(torrent.get('id'))}"
-        size = et.SubElement(item, "size")
-        size.text = sizeTorrent
-        url = f"https://www.sharewood.tv/api/{str(passkey)}/{str(torrent.get('id'))}/download"
-        et.SubElement(item, "enclosure", url=url,
-                    type="application/x-bittorrent")
+        
+        # Données sécurisées
+        t_id = torrent.get('id')
+        t_name = torrent.get('name', 'Sans titre')
+        t_slug = torrent.get('slug', 'slug')
+        t_size = torrent.get('size', 0)
+        t_created = torrent.get('created_at', '')
+        
+        et.SubElement(item, "title").text = str(t_name)
+        
+        # Formatage de la taille
+        human_size = t_size if isinstance(t_size, str) else humanize.naturalsize(t_size, binary=True)
+        
+        # Liens
+        page_link = f"https://sharewood.tv/torrents/{t_slug}.{t_id}"
+        et.SubElement(item, "link").text = page_link
+        et.SubElement(item, "guid", isPermaLink="true").text = page_link
 
-    txt = et.tostring(rss, pretty_print=True,
-                    encoding='utf-8', xml_declaration=True)
+        # Description HTML
+        desc_html = (
+            f"<strong><a href='{page_link}'>{t_name}</a></strong><br/>"
+            f"Taille: {human_size}<br/>"
+            f"Seeders: {torrent.get('seeders', 0)} | Leechers: {torrent.get('leechers', 0)}<br/>"
+            f"Ajouté le: {t_created}"
+        )
+        description_node = et.SubElement(item, "description")
+        description_node.text = et.CDATA(desc_html)
 
-    return Response(txt, mimetype='text/xml')
+        # Lien de téléchargement (Enclosure)
+        dl_url = f"https://www.sharewood.tv/api/{passkey}/{t_id}/download"
+        et.SubElement(item, "enclosure", url=dl_url, type="application/x-bittorrent")
 
+    xml_str = et.tostring(rss, pretty_print=True, encoding='utf-8', xml_declaration=True)
+    
+    return Response(xml_str, mimetype='application/rss+xml')
 
 if __name__ == '__main__':
-
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=14000)
