@@ -33,7 +33,10 @@ COPY . .
 EXPOSE 14000
 
 HEALTHCHECK --interval=30s --timeout=5s \
-  CMD wget -qO- http://localhost:14000/ || exit 1
+  CMD python - <<EOF || exit 1
+import urllib.request
+urllib.request.urlopen("http://127.0.0.1:14000/health", timeout=3)
+EOF
 
 ENTRYPOINT ["gunicorn"]
 CMD ["rss:app","-b","0.0.0.0:14000","--worker-class=gthread","--workers=2","--threads=8","--timeout=45","--keep-alive=5","--max-requests=1000","--max-requests-jitter=100"]

@@ -65,6 +65,10 @@ def how_to():
         "/rss/PASSKEY/search?name=watchmen&subcategory=9"
     )
 
+@app.route("/health")
+def health():
+    return "ok", 200
+
 @app.route("/rss/<string:passkey>/<string:apiAction>", methods=["GET"])
 def return_rss_file(passkey, apiAction):
 
