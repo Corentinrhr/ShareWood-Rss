@@ -7,7 +7,7 @@ Sharewood API to RSS for torrents clients auto-dl
 ### Docker :
 
 ```bash
-docker run -d --name=sharewood -p 14000:14000 limedrive/sharewood-rss
+docker run -d --name=sharewood -p 14000:14000 corentinrhr/sharewood-rss
 
 ```
 
@@ -18,7 +18,7 @@ docker run -d --name=sharewood -p 14000:14000 limedrive/sharewood-rss
 services:
   sharewood:
     container_name: sharewood
-    image: limedrive/sharewood-rss
+    image: corentinrhr/sharewood-rss
     restart: unless-stopped
     ports:
       - '14000:14000'
@@ -31,5 +31,3 @@ Replace `https://www.sharewood.tv/api` by `http://YOUR_IP:14000/rss`.
 
 Example:
 `http://localhost:14000/rss/YOUR_PASSKEY/last-torrents?category=1`
-
-```
