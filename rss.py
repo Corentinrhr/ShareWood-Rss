@@ -8,6 +8,7 @@ import yaml
 import humanize
 import email.utils
 import os
+import time
 
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -38,7 +39,7 @@ retry = Retry(
 adapter = HTTPAdapter(max_retries=retry)
 session.mount("https://", adapter)
 
-BASE_URL = os.getenv("SHAREWOOD_BASE_URL", "https://www.sharewood.tv")
+BASE_URL = "https://www.sharewood.tv"
 
 # Helpers
 def get_sharewood_data(url, params):
@@ -125,6 +126,7 @@ def return_rss_file(passkey, apiAction):
     et.SubElement(channel, "link").text = BASE_URL
     et.SubElement(channel, "lastBuildDate").text = email.utils.formatdate(usegmt=True)
     et.SubElement(channel, "ttl").text = "60"
+    et.SubElement(channel, "pubDate").text = email.utils.formatdate(usegmt=True)
 
     if not torrents:
         item = et.SubElement(channel, "item")
@@ -177,4 +179,12 @@ def return_rss_file(passkey, apiAction):
         xml_declaration=True
     )
 
-    return Response(xml_str, mimetype="application/rss+xml")
+    headers = {
+        "Content-Type": "application/rss+xml; charset=utf-8",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
+        "Last-Modified": email.utils.formatdate(time.time(), usegmt=True),
+    }
+
+    return Response(xml_str, headers=headers)
