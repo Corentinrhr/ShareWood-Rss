@@ -102,7 +102,7 @@ def return_rss_file(passkey, apiAction):
         api_params["subcategory"] = subcategory
         current_cat_id = str(subcategory)
 
-    api_params["limit"] = min(limit, 50)
+    api_params["limit"] = min(limit, 100)
 
     if name:
         api_params["name"] = name
