@@ -9,6 +9,7 @@ import humanize
 import email.utils
 import os
 import time
+from datetime import datetime, timezone
 
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -25,7 +26,7 @@ except FileNotFoundError:
 # Flask app
 app = Flask(__name__)
 
-# Requests session
+# Requests session (stable)
 session = requests.Session()
 session.headers.update({
     "User-Agent": "Sharewood-RSS/1.0"
@@ -47,7 +48,7 @@ def get_sharewood_data(url, params):
         response = session.get(
             url,
             params=params,
-            timeout=(5, 20)  # connect / read
+            timeout=(5, 20)
         )
         response.raise_for_status()
         data = response.json()
@@ -55,6 +56,13 @@ def get_sharewood_data(url, params):
     except requests.exceptions.RequestException as e:
         print(f"Sharewood API error: {e}")
         return []
+
+def parse_date(date_str):
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+        return email.utils.format_datetime(dt.replace(tzinfo=timezone.utc))
+    except Exception:
+        return email.utils.formatdate(usegmt=True)
 
 # Routes
 @app.route("/")
@@ -72,8 +80,6 @@ def health():
 
 @app.route("/rss/<string:passkey>/<string:apiAction>", methods=["GET"])
 def return_rss_file(passkey, apiAction):
-
-    # Passkey validation
     if not passkey or not passkey.isalnum() or len(passkey) != 32:
         abort(404, "Invalid passkey")
 
@@ -124,14 +130,17 @@ def return_rss_file(passkey, apiAction):
 
     et.SubElement(channel, "description").text = "Sharewood RSS feed"
     et.SubElement(channel, "link").text = BASE_URL
-    et.SubElement(channel, "lastBuildDate").text = email.utils.formatdate(usegmt=True)
+
+    now_rfc = email.utils.formatdate(usegmt=True)
+    et.SubElement(channel, "pubDate").text = now_rfc
     et.SubElement(channel, "ttl").text = "60"
-    et.SubElement(channel, "pubDate").text = email.utils.formatdate(usegmt=True)
 
     if not torrents:
         item = et.SubElement(channel, "item")
         et.SubElement(item, "title").text = "Sharewood unavailable"
         et.SubElement(item, "description").text = "Temporary API issue"
+        et.SubElement(item, "pubDate").text = now_rfc
+        et.SubElement(item, "guid", isPermaLink="false").text = f"error-{int(time.time())}"
     else:
         for torrent in torrents:
             item = et.SubElement(channel, "item")
@@ -151,7 +160,11 @@ def return_rss_file(passkey, apiAction):
 
             page_link = f"{BASE_URL}/torrents/{t_slug}.{t_id}"
             et.SubElement(item, "link").text = page_link
-            et.SubElement(item, "guid", isPermaLink="true").text = page_link
+
+            guid_value = f"{t_id}-{t_created}"
+            et.SubElement(item, "guid", isPermaLink="false").text = guid_value
+
+            et.SubElement(item, "pubDate").text = parse_date(t_created)
 
             desc_html = (
                 f"<strong><a href='{page_link}'>{t_name}</a></strong><br/>"
@@ -184,7 +197,7 @@ def return_rss_file(passkey, apiAction):
         "Cache-Control": "no-cache, no-store, must-revalidate",
         "Pragma": "no-cache",
         "Expires": "0",
-        "Last-Modified": email.utils.formatdate(time.time(), usegmt=True),
+        "Last-Modified": now_rfc,
     }
 
     return Response(xml_str, headers=headers)
