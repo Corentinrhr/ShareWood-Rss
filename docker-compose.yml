@@ -1,0 +1,12 @@
+---
+services:
+  sharewood:
+    container_name: sharewood
+    image: corentinrhr/sharewood-rss
+    restart: unless-stopped
+    ports:
+      - '14000:14000'
+    environment:
+      # Laisser vide pour désactiver l'authentification
+      - RSS_USERNAME=
+      - RSS_PASSWORD=
