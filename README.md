@@ -26,8 +26,8 @@ docker run -d \
 
 ### Docker Compose
 
+`docker-compose.yml`
 ```yaml
-***
 services:
   sharewood:
     container_name: sharewood
@@ -36,9 +36,15 @@ services:
     ports:
       - '14000:14000'
     environment:
-      # laisser vide pour désactiver l'auth
-      - RSS_USERNAME=
-      - RSS_PASSWORD=
+      # Optionnel
+      - RSS_USERNAME=${RSS_USERNAME}
+      - RSS_PASSWORD=${RSS_PASSWORD}
+```
+
+`.env`
+```env
+RSS_USERNAME=monuser
+RSS_PASSWORD=monmotdepasse
 ```
 
 ## Authentication (optionnelle)

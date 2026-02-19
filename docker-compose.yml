@@ -7,6 +7,6 @@ services:
     ports:
       - '14000:14000'
     environment:
-      # Laisser vide pour désactiver l'authentification
-      - RSS_USERNAME=
-      - RSS_PASSWORD=
+      # Optionnel
+      - RSS_USERNAME=${RSS_USERNAME}
+      - RSS_PASSWORD=${RSS_PASSWORD}
